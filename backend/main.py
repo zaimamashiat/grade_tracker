@@ -13,7 +13,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = "gradeflow.db"
+DB_PATH = "backend/gradeflow.db"
 
 
 # ── DB Init ───────────────────────────────────────────────────────────────────
