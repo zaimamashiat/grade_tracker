@@ -1,638 +1,613 @@
 import streamlit as st
-import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from datetime import date
-import json
+import requests
 
-# ── Page Config ──────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
+API = "http://127.0.0.1:8000"
+
+# ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="GradeFlow — Academic Tracker",
-    page_icon="📊",
+    page_title="GradeFlow",
+    page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Manrope:wght@300;400;500;600&display=swap');
 
-/* ---- Root Variables ---- */
 :root {
-    --bg:        #0e0f14;
-    --surface:   #16181f;
-    --surface2:  #1e2029;
-    --border:    #2a2d3a;
-    --accent:    #c8a96e;
-    --accent2:   #7c9fcf;
-    --green:     #6ec898;
-    --red:       #e07b6b;
-    --text:      #e8e4dc;
-    --muted:     #7a7f94;
-    --serif:     'DM Serif Display', Georgia, serif;
-    --sans:      'DM Sans', system-ui, sans-serif;
+    --bg:      #0d0f14;
+    --surface: #141720;
+    --sf2:     #1a1e2a;
+    --border:  #262b38;
+    --ink:     #e8e6f0;
+    --muted:   #6b7280;
+    --accent:  #6ee7a0;
+    --gold:    #f0a84a;
+    --blue:    #7eb3f5;
+    --red:     #f07070;
+    --r:       14px;
+}
+html,body,[class*="css"]{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--ink);}
+.stApp{background:var(--bg);}
+#MainMenu,footer,header,.stDeployButton{visibility:hidden;display:none;}
+section[data-testid="stSidebar"]{display:none;}
+
+[data-testid="metric-container"]{
+    background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);
+    padding:0.9rem 1.1rem;box-shadow:0 4px 16px rgba(0,0,0,.4);
+}
+[data-testid="metric-container"] label{
+    color:var(--muted)!important;font-size:.63rem!important;
+    letter-spacing:.14em!important;text-transform:uppercase!important;
+}
+[data-testid="metric-container"] [data-testid="stMetricValue"]{
+    font-family:'Syne',sans-serif!important;font-size:1.9rem!important;color:var(--accent)!important;
 }
 
-/* ---- Base ---- */
-html, body, [class*="css"] {
-    font-family: var(--sans);
-    color: var(--text);
-    background-color: var(--bg);
+.stTextInput input,.stNumberInput input,.stTextArea textarea{
+    background:var(--sf2)!important;border:1.5px solid var(--border)!important;
+    border-radius:10px!important;color:var(--ink)!important;
 }
+[data-baseweb="select"]>div{
+    background:var(--sf2)!important;border:1.5px solid var(--border)!important;border-radius:10px!important;color:var(--ink)!important;
+}
+[data-baseweb="select"] [data-testid="stMarkdownContainer"] p,
+[data-baseweb="select"] span { color: var(--ink) !important; }
 
-.stApp { background: var(--bg); }
+.stButton>button{
+    background:var(--accent)!important;color:#0d0f14!important;border:none!important;
+    border-radius:10px!important;font-weight:700!important;padding:.38rem 1rem!important;
+    transition:opacity .18s!important;font-family:'Manrope',sans-serif!important;
+}
+.stButton>button:hover{opacity:.72!important;}
 
-/* ---- Hide Streamlit chrome ---- */
-#MainMenu, footer, header { visibility: hidden; }
-.stDeployButton { display: none; }
+details{background:var(--surface);border:1.5px solid var(--border)!important;border-radius:var(--r)!important;margin-bottom:.5rem;}
+details summary{font-weight:600;font-family:'Manrope',sans-serif;color:var(--ink);}
+details summary:hover{color:var(--accent);}
+details>div{background:var(--surface);}
 
-/* ---- Sidebar ---- */
-section[data-testid="stSidebar"] {
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-}
-section[data-testid="stSidebar"] .stMarkdown h2 {
-    font-family: var(--serif);
-    color: var(--accent);
-    font-size: 1.4rem;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.5rem;
-}
+.ph{display:flex;align-items:baseline;gap:.6rem;border-bottom:2.5px solid var(--border);padding-bottom:.55rem;margin-bottom:1.5rem;}
+.ph h1{font-family:'Syne',sans-serif;font-size:2.1rem;font-weight:800;margin:0;color:var(--ink);}
+.ph .tl{color:var(--muted);font-size:.88rem;}
 
-/* ---- Metrics ---- */
-[data-testid="metric-container"] {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.2rem 1.4rem;
-}
-[data-testid="metric-container"] label {
-    color: var(--muted) !important;
-    font-size: 0.72rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-}
-[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    font-family: var(--serif);
-    font-size: 2.2rem !important;
-    color: var(--accent) !important;
-}
+.sl{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;color:var(--ink);
+    margin:1.4rem 0 .55rem;padding-left:.65rem;border-left:3px solid var(--gold);}
+.pl{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600;}
 
-/* ---- Section headings ---- */
-.section-title {
-    font-family: var(--serif);
-    font-size: 1.6rem;
-    color: var(--text);
-    margin: 2rem 0 0.8rem;
-    border-left: 3px solid var(--accent);
-    padding-left: 0.8rem;
-}
-.subsection {
-    font-family: var(--sans);
-    font-size: 0.7rem;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 1rem;
-}
+.chip{display:inline-flex;align-items:center;padding:.18rem .65rem;border-radius:999px;
+      font-weight:700;font-size:.8rem;font-family:'Syne',sans-serif;}
+.ca{background:#0d2e1a;color:#6ee7a0;}
+.cb{background:#0d1e35;color:#7eb3f5;}
+.cc{background:#2e2208;color:#f0c070;}
+.cd{background:#2e1208;color:#f0a070;}
+.cf{background:#2e0d0d;color:#f07070;}
+.cn{background:#1e2030;color:#6b7280;}
 
-/* ---- DataEditor / tables ---- */
-[data-testid="stDataFrame"], .stDataEditor {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-}
+.nc{background:var(--surface);border:1.5px solid var(--border);border-left:4px solid var(--blue);
+    border-radius:10px;padding:.7rem 1rem;margin-bottom:.45rem;font-size:.83rem;}
+.nm{font-size:.63rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:.25rem;}
 
-/* ---- Expander ---- */
-details {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.4rem 1rem;
-    margin-bottom: 0.8rem;
-}
-details summary {
-    font-weight: 600;
-    color: var(--accent2);
-    cursor: pointer;
-}
-
-/* ---- Inputs ---- */
-.stTextInput input, .stNumberInput input, .stTextArea textarea, .stSelectbox select {
-    background: var(--surface2) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text) !important;
-    border-radius: 8px !important;
-}
-
-/* ---- Buttons ---- */
-.stButton > button {
-    background: var(--accent) !important;
-    color: #0e0f14 !important;
-    font-weight: 600;
-    border: none !important;
-    border-radius: 8px !important;
-    padding: 0.45rem 1.2rem;
-    letter-spacing: 0.04em;
-    transition: opacity 0.2s;
-}
-.stButton > button:hover { opacity: 0.85; }
-
-/* ---- Grade badge ---- */
-.grade-badge {
-    display: inline-block;
-    padding: 0.25rem 0.8rem;
-    border-radius: 999px;
-    font-weight: 700;
-    font-size: 1rem;
-    letter-spacing: 0.06em;
-}
-.badge-a  { background: #1e3a2e; color: #6ec898; }
-.badge-b  { background: #1e2e3a; color: #7cb8e0; }
-.badge-c  { background: #2e2e1e; color: #d4c96e; }
-.badge-d  { background: #3a1e1e; color: #e07b6b; }
-.badge-f  { background: #2a0e0e; color: #e03b3b; }
-
-/* ---- CGPA ring ---- */
-.cgpa-display {
-    text-align: center;
-    padding: 1.5rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-}
-.cgpa-number {
-    font-family: var(--serif);
-    font-size: 4rem;
-    color: var(--accent);
-    line-height: 1;
-}
-.cgpa-label {
-    font-size: 0.7rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-top: 0.4rem;
-}
-
-/* ---- Note card ---- */
-.note-card {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent2);
-    border-radius: 8px;
-    padding: 0.8rem 1rem;
-    margin-bottom: 0.6rem;
-}
-.note-meta {
-    font-size: 0.68rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 0.3rem;
-}
+.div{border:none;border-top:1.5px solid var(--border);margin:1.2rem 0;}
+.wok{color:var(--accent);font-size:.73rem;font-weight:600;}
+.wbad{color:var(--red);font-size:.73rem;font-weight:600;}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Session State Init ────────────────────────────────────────────────────────
-def default_state():
-    if "student_name" not in st.session_state:
-        st.session_state.student_name = "Student"
-    if "academic_year" not in st.session_state:
-        st.session_state.academic_year = "Year 1 Semester 1"
-    if "courses" not in st.session_state:
-        st.session_state.courses = [
-            {"Course": "Mathematics", "Credits": 3, "Weight Assignments (%)": 20, "Weight Projects (%)": 20, "Weight Quizzes (%)": 20, "Weight Tests (%)": 40},
-            {"Course": "Physics",     "Credits": 3, "Weight Assignments (%)": 15, "Weight Projects (%)": 25, "Weight Quizzes (%)": 20, "Weight Tests (%)": 40},
-        ]
-    if "grades" not in st.session_state:
-        st.session_state.grades = {}   # {course: [{name, type, date_given, date_due, weight_pct, max, actual}]}
-    if "notes" not in st.session_state:
-        st.session_state.notes = []    # [{course, note, date}]
+# ── API Helpers ───────────────────────────────────────────────────────────────
+def api_get(path):
+    try:
+        r = requests.get(f"{API}{path}", timeout=5)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.error(f"API error: {e}")
+        return None
 
-default_state()
+def api_post(path, data):
+    try:
+        r = requests.post(f"{API}{path}", json=data, timeout=5)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.error(f"API error: {e}")
+        return None
+
+def api_put(path, data):
+    try:
+        r = requests.put(f"{API}{path}", json=data, timeout=5)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.error(f"API error: {e}")
+        return None
+
+def api_delete(path):
+    try:
+        r = requests.delete(f"{API}{path}", timeout=5)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.error(f"API error: {e}")
+        return None
 
 
-# ── Helper functions ──────────────────────────────────────────────────────────
+# ── Grading ───────────────────────────────────────────────────────────────────
 GPA_SCALE = [
-    (95, "A+", 4.0), (90, "A",  4.0), (85, "A-", 3.7),
-    (80, "B+", 3.3), (75, "B",  3.0), (70, "B-", 2.7),
-    (65, "C+", 2.3), (60, "C",  2.0), (55, "C-", 1.7),
-    (50, "D+", 1.3), (45, "D",  1.0),  (0,  "F",  0.0),
+    (80,"A+",4.00),(75,"A",3.75),(70,"A-",3.50),
+    (65,"B+",3.25),(60,"B",3.00),(55,"B-",2.75),
+    (50,"C+",2.50),(45,"C",2.25),(40,"D",2.00),(0,"F",0.00),
 ]
 
-def pct_to_grade(pct):
-    for threshold, letter, gp in GPA_SCALE:
-        if pct >= threshold:
-            return letter, gp
-    return "F", 0.0
+def pct_to_grade(p):
+    for t,l,g in GPA_SCALE:
+        if p >= t: return l,g
+    return "F",0.0
 
-def badge_class(letter):
-    if letter.startswith("A"): return "badge-a"
-    if letter.startswith("B"): return "badge-b"
-    if letter.startswith("C"): return "badge-c"
-    if letter.startswith("D"): return "badge-d"
-    return "badge-f"
+def chip_cls(letter):
+    if letter.startswith("A"): return "ca"
+    if letter.startswith("B"): return "cb"
+    if letter in ("C+","C"):   return "cc"
+    if letter == "D":          return "cd"
+    if letter == "F":          return "cf"
+    return "cn"
 
-def course_score(course_name):
-    """Return weighted % score for a course from its grade entries."""
-    entries = st.session_state.grades.get(course_name, [])
-    if not entries:
-        return None
-    total_weight = 0
-    weighted_sum = 0
+def course_score(entries, components):
+    from collections import defaultdict
+    if not entries: return None
+    by_comp = defaultdict(list)
     for e in entries:
-        if e["Max"] and e["Actual"] is not None:
-            w   = e["Weight (%)"]
-            pct = (e["Actual"] / e["Max"]) * 100
-            weighted_sum += w * pct
-            total_weight  += w
-    if total_weight == 0:
-        return None
-    return weighted_sum / total_weight
-
-def compute_cgpa():
-    courses = st.session_state.courses
-    total_points  = 0
-    total_credits = 0
-    rows = []
-    for c in courses:
-        name    = c["Course"]
-        credits = c["Credits"]
-        score   = course_score(name)
-        if score is not None:
-            letter, gp = pct_to_grade(score)
-        else:
-            letter, gp = "—", None
-        rows.append({"Course": name, "Credits": credits, "Score (%)": score, "Grade": letter, "GPA Points": gp})
-        if gp is not None:
-            total_points  += gp * credits
-            total_credits += credits
-    cgpa = total_points / total_credits if total_credits else None
-    return rows, cgpa
+        if e["actual"] is not None and e["max_marks"] > 0:
+            by_comp[e["component"]].append(e["actual"] / e["max_marks"] * 100)
+    tw, ts = 0, 0
+    for comp, ow in components.items():
+        if comp in by_comp:
+            avg = sum(by_comp[comp]) / len(by_comp[comp])
+            ts += ow * avg
+            tw += ow
+    return ts / tw if tw else None
 
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("## ✦ GradeFlow")
-    st.markdown("---")
+# ── Session State ─────────────────────────────────────────────────────────────
+if "show_add_course" not in st.session_state: st.session_state.show_add_course = False
+if "new_comps"       not in st.session_state:
+    st.session_state.new_comps = [{"name":"Assignments","w":25},{"name":"Midterm","w":35},{"name":"Final","w":40}]
 
-    st.session_state.student_name  = st.text_input("Student Name",  st.session_state.student_name)
-    st.session_state.academic_year = st.text_input("Academic Year", st.session_state.academic_year)
 
-    st.markdown("---")
-    st.markdown("**Navigation**")
-    page = st.radio("", ["📋 Dashboard", "📚 Courses & Weights", "✏️ Enter Grades", "📝 Notes"], label_visibility="collapsed")
+# ── Load Data ─────────────────────────────────────────────────────────────────
+profile  = api_get("/profile") or {"student": "Student", "year": "Y1S1"}
+courses  = api_get("/courses") or []
+notes    = api_get("/notes")   or []
 
-    st.markdown("---")
-    st.markdown(f"<div style='color:var(--muted);font-size:0.72rem;letter-spacing:0.1em'>LOGGED IN AS</div>"
-                f"<div style='font-weight:600'>{st.session_state.student_name}</div>"
-                f"<div style='color:var(--muted);font-size:0.8rem'>{st.session_state.academic_year}</div>",
+for c in courses:
+    c["entries"] = api_get(f"/courses/{c['name']}/entries") or []
+
+rows, pts, creds = [], 0, 0
+for c in courses:
+    score = course_score(c["entries"], c["components"])
+    if score is not None:
+        l, g = pct_to_grade(score)
+    else:
+        l, g = "—", None
+    rows.append({"name": c["name"], "credits": c["credits"], "score": score, "letter": l, "gp": g})
+    if g is not None:
+        pts   += g * c["credits"]
+        creds += c["credits"]
+cgpa = pts / creds if creds else None
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  HEADER
+# ════════════════════════════════════════════════════════════════════════════
+hc1, hc2 = st.columns([4, 1])
+with hc1:
+    st.markdown("<div class='ph'><h1>GradeFlow</h1><span class='tl'>Academic Grade Tracker</span></div>",
                 unsafe_allow_html=True)
+with hc2:
+    student_val = st.text_input("Student Name", value=profile["student"],
+                                placeholder="Your name", label_visibility="collapsed", key="sn")
+    year_val    = st.text_input("Year/Semester", value=profile["year"],
+                                placeholder="Year/Semester", label_visibility="collapsed", key="yr")
+    if student_val != profile["student"] or year_val != profile["year"]:
+        api_put("/profile", {"student": student_val, "year": year_val})
+
+m1,m2,m3,m4,m5 = st.columns(5)
+with m1: st.metric("CGPA", f"{cgpa:.2f}" if cgpa is not None else "N/A")
+with m2: st.metric("Courses", len(courses))
+with m3: st.metric("Graded", sum(1 for r in rows if r["score"] is not None))
+with m4: st.metric("Assessments", sum(len(c["entries"]) for c in courses))
+with m5: st.metric("Notes", len(notes))
+
+st.markdown("<hr class='div'>", unsafe_allow_html=True)
+
+LC, RC = st.columns([11, 8], gap="large")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  PAGE 1 — DASHBOARD
-# ══════════════════════════════════════════════════════════════════════════════
-if page == "📋 Dashboard":
-    st.markdown(f"<div class='section-title'>Academic Dashboard</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='subsection'>{st.session_state.student_name} · {st.session_state.academic_year}</div>", unsafe_allow_html=True)
+# ════════════════════════════════════════════════════════════════════════════
+#  LEFT — Courses
+# ════════════════════════════════════════════════════════════════════════════
+with LC:
+    lh1, lh2 = st.columns([3, 1])
+    with lh1: st.markdown("<div class='sl'>📚 Courses</div>", unsafe_allow_html=True)
+    with lh2:
+        if st.button("＋ Add Course", key="btn_add"):
+            st.session_state.show_add_course = not st.session_state.show_add_course
+            if st.session_state.show_add_course:
+                st.session_state.new_comps = [{"name":"Assignments","w":25},{"name":"Midterm","w":35},{"name":"Final","w":40}]
 
-    rows, cgpa = compute_cgpa()
+    if st.session_state.show_add_course:
+        with st.container(border=True):
+            ac1, ac2 = st.columns(2)
+            with ac1: nc_name = st.text_input("Course Name", key="nc_name", placeholder="e.g. Thermodynamics")
+            with ac2: nc_cred = st.number_input("Credit Hours", 1, 6, 3, key="nc_cred")
 
-    # ── Top metrics
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("Courses Tracked", len(st.session_state.courses))
-    with c2:
-        graded = sum(1 for r in rows if r["Score (%)"] is not None)
-        st.metric("Courses Graded", graded)
-    with c3:
-        total_entries = sum(len(v) for v in st.session_state.grades.values())
-        st.metric("Grade Entries", total_entries)
-    with c4:
-        st.metric("Notes Added", len(st.session_state.notes))
+            st.markdown("<div class='pl' style='margin:.5rem 0 .3rem'>Components — weights must sum to 100%</div>",
+                        unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+            for i, comp in enumerate(st.session_state.new_comps):
+                cc1, cc2, cc3 = st.columns([3, 1, .5])
+                with cc1:
+                    v = st.text_input("Component Name", value=comp["name"], key=f"nc_nm_{i}", label_visibility="collapsed")
+                    st.session_state.new_comps[i]["name"] = v
+                with cc2:
+                    w = st.number_input("Weight", value=comp["w"], min_value=0, max_value=100,
+                                        key=f"nc_w_{i}", label_visibility="collapsed")
+                    st.session_state.new_comps[i]["w"] = w
+                with cc3:
+                    if st.button("✕", key=f"nc_del_{i}") and len(st.session_state.new_comps) > 1:
+                        st.session_state.new_comps.pop(i); st.rerun()
 
-    # ── CGPA + Course cards
-    left, right = st.columns([1, 2])
+            tw = sum(c["w"] for c in st.session_state.new_comps)
+            st.markdown(f"<div class='{'wok' if abs(tw-100)<.5 else 'wbad'}'>Total: {tw}%</div>",
+                        unsafe_allow_html=True)
 
-    with left:
-        cgpa_str = f"{cgpa:.2f}" if cgpa is not None else "N/A"
-        if cgpa is not None:
-            _, cgpa_letter = pct_to_grade(cgpa * 25), pct_to_grade(cgpa * 25)
-        st.markdown(f"""
-        <div class='cgpa-display'>
-            <div class='cgpa-number'>{cgpa_str}</div>
-            <div class='cgpa-label'>Cumulative GPA (4.0 Scale)</div>
-        </div>
+            ba, bb, bc_ = st.columns([1, 1, 2])
+            with ba:
+                if st.button("＋ Component", key="nc_add_comp"):
+                    st.session_state.new_comps.append({"name": "New", "w": 0}); st.rerun()
+            with bb:
+                if st.button("✔ Save Course", key="nc_save"):
+                    if not nc_name.strip():
+                        st.error("Enter a name.")
+                    elif abs(tw - 100) >= .5:
+                        st.error("Weights must sum to 100%.")
+                    else:
+                        api_post("/courses", {
+                            "name": nc_name.strip(),
+                            "credits": nc_cred,
+                            "components": {c["name"]: c["w"] for c in st.session_state.new_comps if c["name"].strip()},
+                        })
+                        st.session_state.show_add_course = False
+                        st.rerun()
+            with bc_:
+                if st.button("Cancel", key="nc_cancel"):
+                    st.session_state.show_add_course = False; st.rerun()
+
+    # ── Course expanders ──────────────────────────────────────────────────
+    for cdata in courses:
+        cname    = cdata["name"]
+        entries  = cdata["entries"]
+        comps    = cdata["components"]
+        score    = course_score(entries, comps)
+        letter   = pct_to_grade(score)[0] if score is not None else "—"
+        score_str = f"{score:.1f}%" if score is not None else "No data"
+
+        with st.expander(f"**{cname}** · {score_str} · {cdata['credits']} cr", expanded=False):
+
+            st.markdown("<div class='pl'>Assessment Components & Weights</div>", unsafe_allow_html=True)
+            new_comps_data = {}
+            for cn in list(comps.keys()):
+                cw = comps[cn]
+                wc1, wc2, wc3, wc4 = st.columns([3, 1, 1, .5])
+                with wc1:
+                    new_cn = st.text_input("Component Name", value=cn, key=f"cn_{cname}_{cn}", label_visibility="collapsed")
+                with wc2:
+                    new_cw = st.number_input("Weight", value=cw, min_value=0, max_value=100,
+                                             key=f"cw_{cname}_{cn}", label_visibility="collapsed")
+                with wc3:
+                    comp_ents = [e for e in entries if e["component"] == cn
+                                 and e["actual"] is not None and e["max_marks"] > 0]
+                    if comp_ents:
+                        avg_raw     = sum(e["actual"] / e["max_marks"] * 100 for e in comp_ents) / len(comp_ents)
+                        wtd_contrib = cw * avg_raw / 100
+                        st.markdown(f"<div style='padding-top:.48rem;font-size:.75rem;color:var(--accent);font-weight:700'>{wtd_contrib:.1f}/{cw}%</div>",
+                                    unsafe_allow_html=True)
+                    else:
+                        st.markdown("<div style='padding-top:.48rem;font-size:.8rem;color:var(--muted)'>—</div>",
+                                    unsafe_allow_html=True)
+                with wc4:
+                    if st.button("✕", key=f"dc_{cname}_{cn}"):
+                        new_comps_copy = dict(comps)
+                        del new_comps_copy[cn]
+                        api_put(f"/courses/{cname}", {"credits": cdata["credits"], "components": new_comps_copy})
+                        for e in entries:
+                            if e["component"] == cn:
+                                api_delete(f"/entries/{e['id']}")
+                        st.rerun()
+                new_comps_data[new_cn] = new_cw
+
+            tw2 = sum(new_comps_data.values())
+            st.markdown(f"<div class='{'wok' if abs(tw2-100)<.5 else 'wbad'}'>Total: {tw2}%</div>",
+                        unsafe_allow_html=True)
+
+            ra, rb, rc_col, rd = st.columns(4)
+            with ra:
+                if st.button("＋ Component", key=f"acomp_{cname}"):
+                    new_c = dict(comps)
+                    new_c["New Component"] = 0
+                    api_put(f"/courses/{cname}", {"credits": cdata["credits"], "components": new_c})
+                    st.rerun()
+            with rb:
+                if st.button("Save Weights", key=f"sw_{cname}"):
+                    api_put(f"/courses/{cname}", {"credits": cdata["credits"], "components": new_comps_data})
+                    st.success("Weights saved!"); st.rerun()
+            with rc_col:
+                new_cr = st.number_input("Credits", 1, 6, cdata["credits"], key=f"cr_{cname}")
+                if new_cr != cdata["credits"]:
+                    api_put(f"/courses/{cname}", {"credits": new_cr, "components": comps})
+            with rd:
+                if st.button("🗑 Delete", key=f"del_{cname}"):
+                    api_delete(f"/courses/{cname}")
+                    st.rerun()
+
+            st.markdown("<hr class='div' style='margin:.6rem 0'>", unsafe_allow_html=True)
+
+            st.markdown("<div class='pl'>Add Assessment Entry</div>", unsafe_allow_html=True)
+            ge1, ge2, ge3, ge4, ge5 = st.columns([2.5, 1.5, 1, 1, 1])
+            with ge1: g_name   = st.text_input("Assessment Name", placeholder="e.g. Final Exam",
+                                                key=f"gn_{cname}", label_visibility="collapsed")
+            with ge2:
+                comp_opts = list(comps.keys())
+                g_comp    = st.selectbox("Component", comp_opts, key=f"gc_{cname}", label_visibility="collapsed")
+            with ge3: g_max    = st.number_input("Max Marks", min_value=1, value=100,
+                                                 key=f"gmax_{cname}", label_visibility="collapsed")
+            with ge4: g_actual = st.number_input("Marks Obtained", min_value=0.0, value=0.0, step=.5,
+                                                 key=f"gact_{cname}", label_visibility="collapsed")
+            with ge5: g_date   = st.date_input("Date", value=date.today(),
+                                               key=f"gd_{cname}", label_visibility="collapsed")
+
+            if st.button("＋ Add Entry", key=f"ae_{cname}"):
+                if g_name.strip():
+                    api_post(f"/courses/{cname}/entries", {
+                        "name":      g_name.strip(),
+                        "component": g_comp,
+                        "max_marks": g_max,
+                        "actual":    g_actual if g_actual > 0 else None,
+                        "date":      str(g_date),
+                    })
+                    st.rerun()
+                else:
+                    st.error("Enter an assessment name.")
+
+            if entries:
+                from collections import defaultdict
+                comp_raw_lists = defaultdict(list)
+                for e in entries:
+                    if e["actual"] is not None and e["max_marks"] > 0:
+                        comp_raw_lists[e["component"]].append(e["actual"] / e["max_marks"] * 100)
+
+                st.markdown("""
+                <div style='display:grid;grid-template-columns:2.5fr 1.8fr .9fr .9fr .7fr .9fr .4fr;
+                            gap:.4rem;padding:.2rem .1rem;margin-top:.6rem;'>
+                  <div class='pl'>Name</div><div class='pl'>Component</div>
+                  <div class='pl'>Max</div><div class='pl'>Actual</div>
+                  <div class='pl'>Raw %</div><div class='pl'>Wtd contrib</div><div></div>
+                </div>""", unsafe_allow_html=True)
+
+                for e in entries:
+                    raw_pct  = e["actual"] / e["max_marks"] * 100 if e["actual"] is not None and e["max_marks"] > 0 else None
+                    raw_str  = f"{raw_pct:.1f}%" if raw_pct is not None else "—"
+                    cw_e     = comps.get(e["component"], 0)
+                    sibs     = comp_raw_lists.get(e["component"], [])
+                    wtd_str  = f"{cw_e * sum(sibs)/len(sibs)/100:.2f} / {cw_e}%" if sibs else "pending"
+                    wtd_color = "var(--accent)" if sibs else "var(--muted)"
+
+                    ec1,ec2,ec3,ec4,ec5,ec6,ec7 = st.columns([2.5,1.8,.9,.9,.7,.9,.4])
+                    with ec1:
+                        nv = st.text_input("Entry Name", value=e["name"], key=f"en_{e['id']}", label_visibility="collapsed")
+                    with ec2:
+                        ci  = list(comps.keys()).index(e["component"]) if e["component"] in comps else 0
+                        nc_ = st.selectbox("Entry Component", list(comps.keys()), index=ci,
+                                           key=f"ec_{e['id']}", label_visibility="collapsed")
+                    with ec3:
+                        nm_ = st.number_input("Entry Max", value=float(e["max_marks"]), min_value=1.0,
+                                              key=f"em_{e['id']}", label_visibility="collapsed")
+                    with ec4:
+                        na_ = st.number_input("Entry Actual", value=float(e["actual"] or 0), min_value=0.0, step=.5,
+                                              key=f"ea_{e['id']}", label_visibility="collapsed")
+                    with ec5:
+                        st.markdown(f"<div style='padding-top:.45rem;font-weight:600;color:#7eb3f5;font-size:.8rem'>{raw_str}</div>",
+                                    unsafe_allow_html=True)
+                    with ec6:
+                        st.markdown(f"<div style='padding-top:.45rem;font-weight:700;color:{wtd_color};font-size:.78rem'>{wtd_str}</div>",
+                                    unsafe_allow_html=True)
+                    with ec7:
+                        if st.button("✕", key=f"de_{e['id']}"):
+                            api_delete(f"/entries/{e['id']}")
+                            st.rerun()
+
+                    if nv != e["name"] or nc_ != e["component"] or nm_ != e["max_marks"] or na_ != (e["actual"] or 0):
+                        api_put(f"/entries/{e['id']}", {
+                            "name": nv, "component": nc_,
+                            "max_marks": nm_, "actual": na_ if na_ > 0 else None,
+                        })
+
+                st.markdown("<hr class='div' style='margin:.5rem 0'>", unsafe_allow_html=True)
+                st.markdown("<div class='pl'>Component Score Breakdown</div>", unsafe_allow_html=True)
+                total_weighted, total_weight_covered = 0, 0
+                for comp_n, comp_w in comps.items():
+                    raws = comp_raw_lists.get(comp_n, [])
+                    if raws:
+                        avg_raw = sum(raws) / len(raws)
+                        wtd     = comp_w * avg_raw / 100
+                        total_weighted       += wtd
+                        total_weight_covered += comp_w
+                        avg_label = f"avg of {len(raws)}" if len(raws) > 1 else "1 entry"
+                        st.markdown(f"""
+                        <div style='background:var(--sf2);border:1px solid var(--border);border-radius:8px;
+                                    padding:.5rem .8rem;margin-bottom:.3rem;font-size:.8rem;'>
+                          <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;'>
+                            <span style='font-weight:700'>{comp_n}</span>
+                            <span style='color:var(--muted);font-size:.72rem'>{avg_label} · avg {avg_raw:.1f}% raw</span>
+                            <span style='color:var(--accent);font-weight:700'>{wtd:.2f} / {comp_w}% weighted</span>
+                          </div>
+                          <div style='background:var(--border);border-radius:999px;height:5px;'>
+                            <div style='background:var(--accent);width:{int(avg_raw)}%;height:5px;border-radius:999px;'></div>
+                          </div>
+                        </div>""", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div style='background:var(--sf2);border:1px solid var(--border);border-radius:8px;
+                                    padding:.5rem .8rem;margin-bottom:.3rem;font-size:.8rem;
+                                    display:flex;justify-content:space-between;'>
+                          <span style='font-weight:700'>{comp_n}</span>
+                          <span style='color:var(--muted)'>no entries yet</span>
+                          <span style='color:var(--muted)'>— / {comp_w}%</span>
+                        </div>""", unsafe_allow_html=True)
+
+                if total_weight_covered > 0:
+                    final_pct   = total_weighted / total_weight_covered * 100
+                    letter_f, _ = pct_to_grade(final_pct)
+                    chip_f      = chip_cls(letter_f)
+                    st.markdown(f"""
+                    <div style='background:var(--surface);border:1.5px solid var(--accent);border-radius:10px;
+                                padding:.6rem 1rem;margin-top:.4rem;display:flex;justify-content:space-between;align-items:center;'>
+                      <span style='font-family:Syne,sans-serif;font-weight:700;font-size:.9rem'>Current Score</span>
+                      <span style='color:var(--muted);font-size:.75rem'>{total_weighted:.2f} pts out of {total_weight_covered}% covered</span>
+                      <span style='font-family:Syne,sans-serif;font-weight:800;font-size:1.1rem;color:var(--accent)'>{final_pct:.1f}%
+                        &nbsp;<span class='chip {chip_f}' style='font-size:.8rem'>{letter_f}</span>
+                      </span>
+                    </div>""", unsafe_allow_html=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  RIGHT — CGPA gauge + summary + chart + notes
+# ════════════════════════════════════════════════════════════════════════════
+with RC:
+
+    st.markdown("<div class='sl'>🎓 CGPA Overview</div>", unsafe_allow_html=True)
+    gauge_val = cgpa if cgpa is not None else 0
+    fig_g = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=gauge_val,
+        domain={"x":[0,1],"y":[0,1]},
+        number={"font":{"color":"#6ee7a0","family":"Syne","size":38},"suffix":" / 4.0"},
+        gauge={
+            "axis":{"range":[0,4],"tickcolor":"#6b7280","tickfont":{"color":"#6b7280","size":10}},
+            "bar":{"color":"#6ee7a0","thickness":.22},
+            "bgcolor":"#1a1e2a","borderwidth":0,
+            "steps":[
+                {"range":[0,1],"color":"#2e0d0d"},{"range":[1,2],"color":"#2e1208"},
+                {"range":[2,3],"color":"#2e2208"},{"range":[3,4],"color":"#0d2e1a"},
+            ],
+            "threshold":{"line":{"color":"#6ee7a0","width":3},"thickness":.85,"value":gauge_val},
+        },
+    ))
+    fig_g.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font_color="#e8e6f0", height=200, margin=dict(t=10,b=0,l=20,r=20),
+    )
+    st.plotly_chart(fig_g, width="stretch")
+
+    with st.expander("📋 EWU Grading Scale Reference"):
+        st.markdown("""
+        <table style='width:100%;border-collapse:collapse;font-size:.78rem;font-family:Manrope,sans-serif;'>
+          <thead>
+            <tr style='background:#262b38;color:#e8e6f0;text-align:center;'>
+              <th style='padding:.35rem .6rem;'>Marks</th><th style='padding:.35rem .6rem;'>Letter</th>
+              <th style='padding:.35rem .6rem;'>Grade Point</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style='background:#0d2e1a;color:#6ee7a0;text-align:center;'><td>80 – 100</td><td><b>A+</b></td><td>4.00</td></tr>
+            <tr style='background:#0d2e1a;color:#6ee7a0;text-align:center;'><td>75 – 79</td><td><b>A</b></td><td>3.75</td></tr>
+            <tr style='background:#0d2e1a;color:#6ee7a0;text-align:center;'><td>70 – 74</td><td><b>A−</b></td><td>3.50</td></tr>
+            <tr style='background:#0d1e35;color:#7eb3f5;text-align:center;'><td>65 – 69</td><td><b>B+</b></td><td>3.25</td></tr>
+            <tr style='background:#0d1e35;color:#7eb3f5;text-align:center;'><td>60 – 64</td><td><b>B</b></td><td>3.00</td></tr>
+            <tr style='background:#0d1e35;color:#7eb3f5;text-align:center;'><td>55 – 59</td><td><b>B−</b></td><td>2.75</td></tr>
+            <tr style='background:#2e2208;color:#f0c070;text-align:center;'><td>50 – 54</td><td><b>C+</b></td><td>2.50</td></tr>
+            <tr style='background:#2e2208;color:#f0c070;text-align:center;'><td>45 – 49</td><td><b>C</b></td><td>2.25</td></tr>
+            <tr style='background:#2e1208;color:#f0a070;text-align:center;'><td>40 – 44</td><td><b>D</b></td><td>2.00</td></tr>
+            <tr style='background:#2e0d0d;color:#f07070;text-align:center;'><td>Less than 40</td><td><b>F</b></td><td>0.00</td></tr>
+          </tbody>
+        </table>
+        <div style='color:#6b7280;font-size:.65rem;margin-top:.4rem;text-align:center'>East West University Grading System</div>
         """, unsafe_allow_html=True)
 
-        # Gauge chart
-        if cgpa is not None:
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=cgpa,
-                domain={"x": [0, 1], "y": [0, 1]},
-                gauge={
-                    "axis": {"range": [0, 4], "tickcolor": "#7a7f94"},
-                    "bar":  {"color": "#c8a96e"},
-                    "bgcolor": "#1e2029",
-                    "steps": [
-                        {"range": [0,   1], "color": "#3a1e1e"},
-                        {"range": [1,   2], "color": "#2a2212"},
-                        {"range": [2,   3], "color": "#1a2a1a"},
-                        {"range": [3,   4], "color": "#1a2e3a"},
-                    ],
-                    "threshold": {"line": {"color": "#c8a96e", "width": 3}, "thickness": 0.8, "value": cgpa},
-                },
-                number={"font": {"color": "#c8a96e", "family": "DM Serif Display"}, "suffix": " / 4.0"},
-            ))
-            fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#e8e4dc", height=220, margin=dict(t=20, b=10, l=20, r=20),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-    with right:
-        st.markdown("<div class='subsection'>Course Summary</div>", unsafe_allow_html=True)
-        if rows:
-            for r in rows:
-                score_str = f"{r['Score (%)']:.1f}%" if r["Score (%)"] is not None else "No data yet"
-                gp_str    = f"{r['GPA Points']:.1f}" if r["GPA Points"] is not None else "—"
-                bc        = badge_class(r["Grade"])
-                st.markdown(f"""
-                <div style='display:flex;align-items:center;justify-content:space-between;
-                            background:var(--surface);border:1px solid var(--border);
-                            border-radius:10px;padding:0.8rem 1rem;margin-bottom:0.5rem;'>
-                    <div>
-                        <div style='font-weight:600'>{r['Course']}</div>
-                        <div style='color:var(--muted);font-size:0.78rem'>{r['Credits']} credits · {score_str}</div>
-                    </div>
-                    <div style='text-align:right'>
-                        <span class='grade-badge {bc}'>{r['Grade']}</span>
-                        <div style='color:var(--muted);font-size:0.72rem;margin-top:0.2rem'>{gp_str} pts</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("Add courses in the Courses & Weights tab.")
-
-    # ── Distribution chart
-    if any(r["Score (%)"] is not None for r in rows):
-        st.markdown("<div class='section-title' style='font-size:1.2rem'>Grade Distribution</div>", unsafe_allow_html=True)
-        names  = [r["Course"]  for r in rows if r["Score (%)"] is not None]
-        scores = [r["Score (%)"] for r in rows if r["Score (%)"] is not None]
-        colors = []
-        for s in scores:
-            l, _ = pct_to_grade(s)
-            if l.startswith("A"):   colors.append("#6ec898")
-            elif l.startswith("B"): colors.append("#7cb8e0")
-            elif l.startswith("C"): colors.append("#d4c96e")
-            elif l.startswith("D"): colors.append("#e0956b")
-            else:                   colors.append("#e03b3b")
-
-        fig2 = go.Figure(go.Bar(
-            x=names, y=scores, marker_color=colors, text=[f"{s:.1f}%" for s in scores],
-            textposition="outside", textfont_color="#e8e4dc",
-        ))
-        fig2.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#e8e4dc", font_family="DM Sans",
-            yaxis=dict(range=[0, 110], gridcolor="#2a2d3a", color="#7a7f94"),
-            xaxis=dict(color="#7a7f94"),
-            showlegend=False, height=320,
-            margin=dict(t=30, b=20, l=10, r=10),
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  PAGE 2 — COURSES & WEIGHTS
-# ══════════════════════════════════════════════════════════════════════════════
-elif page == "📚 Courses & Weights":
-    st.markdown("<div class='section-title'>Courses & Assessment Weights</div>", unsafe_allow_html=True)
-    st.markdown("<div class='subsection'>Define each course, its credit hours, and how each assessment type is weighted</div>", unsafe_allow_html=True)
-
-    st.info("ℹ️  Weights per course must sum to 100%. Edit directly in the table below.", icon="💡")
-
-    df = pd.DataFrame(st.session_state.courses)
-    edited = st.data_editor(
-        df,
-        num_rows="dynamic",
-        use_container_width=True,
-        column_config={
-            "Course": st.column_config.TextColumn("Course Name", width="medium"),
-            "Credits": st.column_config.NumberColumn("Credits", min_value=1, max_value=6, step=1, width="small"),
-            "Weight Assignments (%)": st.column_config.NumberColumn("Assignments %", min_value=0, max_value=100, step=5),
-            "Weight Projects (%)":    st.column_config.NumberColumn("Projects %",    min_value=0, max_value=100, step=5),
-            "Weight Quizzes (%)":     st.column_config.NumberColumn("Quizzes %",     min_value=0, max_value=100, step=5),
-            "Weight Tests (%)":       st.column_config.NumberColumn("Tests %",       min_value=0, max_value=100, step=5),
-        },
-        hide_index=True,
-        key="courses_editor",
-    )
-
-    # Validate weights
-    issues = []
-    for _, row in edited.iterrows():
-        total = (row.get("Weight Assignments (%)", 0) or 0) + \
-                (row.get("Weight Projects (%)", 0) or 0) + \
-                (row.get("Weight Quizzes (%)", 0) or 0) + \
-                (row.get("Weight Tests (%)", 0) or 0)
-        if abs(total - 100) > 0.5:
-            issues.append(f"**{row['Course']}**: weights sum to {total:.0f}% (need 100%)")
-
-    if issues:
-        for issue in issues:
-            st.warning(issue)
-    else:
-        st.success("✓ All course weights sum to 100%")
-
-    if st.button("💾 Save Courses"):
-        st.session_state.courses = edited.to_dict("records")
-        # Remove grade entries for deleted courses
-        valid_names = {c["Course"] for c in st.session_state.courses}
-        st.session_state.grades = {k: v for k, v in st.session_state.grades.items() if k in valid_names}
-        st.success("Courses saved!")
-        st.rerun()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  PAGE 3 — ENTER GRADES
-# ══════════════════════════════════════════════════════════════════════════════
-elif page == "✏️ Enter Grades":
-    st.markdown("<div class='section-title'>Grade Entry</div>", unsafe_allow_html=True)
-    st.markdown("<div class='subsection'>Log assessments per course — scores update automatically</div>", unsafe_allow_html=True)
-
-    if not st.session_state.courses:
-        st.warning("Please add courses first in the Courses & Weights tab.")
-        st.stop()
-
-    course_names = [c["Course"] for c in st.session_state.courses]
-    selected_course = st.selectbox("Select Course", course_names)
-
-    # Get course weight config
-    course_cfg = next((c for c in st.session_state.courses if c["Course"] == selected_course), {})
-
-    # ── Add new entry
-    with st.expander("➕ Add New Assessment", expanded=True):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            a_name = st.text_input("Assessment Name", placeholder="e.g. Midterm Exam")
-            a_type = st.selectbox("Type", ["Assignment", "Project", "Quiz", "Test"])
-        with col2:
-            a_weight = st.number_input("Weight within Type (%)", min_value=0.0, max_value=100.0, value=50.0, step=5.0,
-                                       help="What % of this assessment type does this item count for?")
-            a_max    = st.number_input("Max Marks", min_value=1.0, value=100.0, step=1.0)
-        with col3:
-            a_actual = st.number_input("Actual Marks (leave 0 if pending)", min_value=0.0, value=0.0, step=0.5)
-            a_date   = st.date_input("Due Date", value=date.today())
-
-        if st.button("Add Assessment"):
-            if a_name.strip():
-                # Compute contribution: weight_of_type * (a_weight/100) maps to overall %
-                type_key = f"Weight {a_type}s (%)"
-                type_weight = course_cfg.get(type_key, 0) or 0
-                overall_weight = type_weight * (a_weight / 100)
-
-                entry = {
-                    "Name": a_name,
-                    "Type": a_type,
-                    "Due Date": str(a_date),
-                    "Weight (%)": overall_weight,
-                    "Max": a_max,
-                    "Actual": a_actual if a_actual > 0 else None,
-                }
-                if selected_course not in st.session_state.grades:
-                    st.session_state.grades[selected_course] = []
-                st.session_state.grades[selected_course].append(entry)
-                st.success(f"Added '{a_name}' to {selected_course}")
-                st.rerun()
-            else:
-                st.error("Please enter an assessment name.")
-
-    # ── Show existing entries for selected course
-    entries = st.session_state.grades.get(selected_course, [])
-    if entries:
-        st.markdown(f"<div class='subsection'>Current Entries for {selected_course}</div>", unsafe_allow_html=True)
-
-        df_entries = pd.DataFrame(entries)
-        edited_entries = st.data_editor(
-            df_entries,
-            num_rows="dynamic",
-            use_container_width=True,
-            column_config={
-                "Name":       st.column_config.TextColumn("Assessment"),
-                "Type":       st.column_config.SelectboxColumn("Type", options=["Assignment", "Project", "Quiz", "Test"]),
-                "Due Date":   st.column_config.TextColumn("Due Date"),
-                "Weight (%)": st.column_config.NumberColumn("Overall Weight %", min_value=0, max_value=100, format="%.1f"),
-                "Max":        st.column_config.NumberColumn("Max Marks", min_value=1),
-                "Actual":     st.column_config.NumberColumn("Actual Marks", min_value=0),
-            },
-            hide_index=True,
-            key=f"grades_editor_{selected_course}",
-        )
-
-        if st.button("💾 Save Changes"):
-            st.session_state.grades[selected_course] = edited_entries.to_dict("records")
-            st.success("Grades updated!")
-            st.rerun()
-
-        # ── Live score for this course
-        score = course_score(selected_course)
-        if score is not None:
-            letter, gp = pct_to_grade(score)
-            bc = badge_class(letter)
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(f"""
-            <div style='background:var(--surface);border:1px solid var(--border);border-radius:12px;
-                        padding:1.2rem 1.6rem;display:flex;align-items:center;gap:2rem;'>
-                <div>
-                    <div style='color:var(--muted);font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase'>Current Score</div>
-                    <div style='font-family:"DM Serif Display",serif;font-size:2.4rem;color:var(--accent)'>{score:.1f}%</div>
-                </div>
-                <div>
-                    <span class='grade-badge {bc}' style='font-size:1.4rem;padding:0.4rem 1.2rem'>{letter}</span>
-                </div>
-                <div>
-                    <div style='color:var(--muted);font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase'>GPA Points</div>
-                    <div style='font-family:"DM Serif Display",serif;font-size:2.4rem;color:var(--accent2)'>{gp:.1f}</div>
-                </div>
+    st.markdown("<div class='pl' style='margin-bottom:.35rem'>Course Breakdown</div>", unsafe_allow_html=True)
+    for r in rows:
+        ss  = f"{r['score']:.1f}%" if r["score"] is not None else "—"
+        gps = f"{r['gp']:.1f} pts" if r["gp"] is not None else "—"
+        bc  = chip_cls(r["letter"])
+        st.markdown(f"""
+        <div style='display:flex;align-items:center;justify-content:space-between;
+                    background:var(--surface);border:1.5px solid var(--border);border-radius:10px;
+                    padding:.55rem .9rem;margin-bottom:.35rem;'>
+            <div>
+                <div style='font-weight:700;font-size:.86rem'>{r['name']}</div>
+                <div style='color:var(--muted);font-size:.68rem'>{r['credits']} cr · {ss}</div>
             </div>
-            """, unsafe_allow_html=True)
+            <div style='display:flex;align-items:center;gap:.65rem'>
+                <div style='color:var(--muted);font-size:.72rem'>{gps}</div>
+                <span class='chip {bc}'>{r['letter']}</span>
+            </div>
+        </div>""", unsafe_allow_html=True)
 
-        # ── Per-type breakdown chart
-        if entries:
-            type_data = {}
-            for e in entries:
-                t = e["Type"]
-                if e["Max"] and e["Actual"] is not None:
-                    pct = (e["Actual"] / e["Max"]) * 100
-                    if t not in type_data:
-                        type_data[t] = []
-                    type_data[t].append(pct)
-            if type_data:
-                labels = list(type_data.keys())
-                avgs   = [sum(v)/len(v) for v in type_data.values()]
-                fig3 = go.Figure(go.Bar(
-                    x=labels, y=avgs,
-                    marker_color=["#c8a96e", "#7c9fcf", "#6ec898", "#e07b6b"],
-                    text=[f"{a:.1f}%" for a in avgs], textposition="outside", textfont_color="#e8e4dc",
-                ))
-                fig3.update_layout(
-                    title=f"{selected_course} — Avg Score by Type",
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    font_color="#e8e4dc", font_family="DM Sans",
-                    yaxis=dict(range=[0, 115], gridcolor="#2a2d3a", color="#7a7f94"),
-                    xaxis=dict(color="#7a7f94"),
-                    showlegend=False, height=280,
-                    margin=dict(t=40, b=20, l=10, r=10),
-                )
-                st.plotly_chart(fig3, use_container_width=True)
-    else:
-        st.info(f"No assessments added for {selected_course} yet.")
+    graded = [r for r in rows if r["score"] is not None]
+    if graded:
+        st.markdown("<div class='sl' style='font-size:1rem;margin-top:1rem'>📊 Score Distribution</div>",
+                    unsafe_allow_html=True)
+        cmap = {"A":"#6ee7a0","B":"#7eb3f5","C":"#f0a84a","D":"#f0784a","F":"#f07070"}
+        bcolors = []
+        for r in graded:
+            for k, v in cmap.items():
+                if r["letter"].startswith(k): bcolors.append(v); break
+            else: bcolors.append("#6b7280")
+        fig_b = go.Figure(go.Bar(
+            x=[r["name"] for r in graded], y=[r["score"] for r in graded],
+            marker_color=bcolors,
+            text=[f"{r['score']:.1f}%" for r in graded],
+            textposition="outside", textfont_color="#e8e6f0", textfont_size=10,
+        ))
+        fig_b.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font_color="#e8e6f0", font_family="Manrope",
+            yaxis=dict(range=[0,115], gridcolor="#262b38", color="#6b7280"),
+            xaxis=dict(color="#6b7280"), showlegend=False, height=230,
+            margin=dict(t=25,b=10,l=10,r=10),
+        )
+        st.plotly_chart(fig_b, width="stretch")
 
+    st.markdown("<hr class='div'>", unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  PAGE 4 — NOTES
-# ══════════════════════════════════════════════════════════════════════════════
-elif page == "📝 Notes":
-    st.markdown("<div class='section-title'>Study Notes</div>", unsafe_allow_html=True)
-    st.markdown("<div class='subsection'>Attach notes to any course — reminders, study tips, exam alerts</div>", unsafe_allow_html=True)
-
-    with st.expander("➕ Add New Note", expanded=True):
-        n_course = st.selectbox("Course (or General)", ["General"] + [c["Course"] for c in st.session_state.courses])
-        n_text   = st.text_area("Note", placeholder="e.g. Midterm covers chapters 1-6. Focus on integration techniques.")
-        if st.button("Save Note"):
+    st.markdown("<div class='sl'>📝 Notes</div>", unsafe_allow_html=True)
+    with st.expander("＋ New Note"):
+        n_course = st.selectbox("Course", ["General"] + [c["name"] for c in courses], key="nc")
+        n_text   = st.text_area("Note Content", placeholder="e.g. Midterm covers chapters 1–6…",
+                                key="nt", label_visibility="collapsed")
+        if st.button("Save Note", key="sn_btn"):
             if n_text.strip():
-                st.session_state.notes.append({"Course": n_course, "Note": n_text, "Date": str(date.today())})
-                st.success("Note saved!")
+                api_post("/notes", {"course_name": n_course, "text": n_text.strip(), "date": str(date.today())})
                 st.rerun()
-            else:
-                st.error("Please write something first.")
 
-    if st.session_state.notes:
-        filter_course = st.selectbox("Filter by Course", ["All"] + list({n["Course"] for n in st.session_state.notes}))
-        filtered = st.session_state.notes if filter_course == "All" else [n for n in st.session_state.notes if n["Course"] == filter_course]
+    for note in notes:
+        nc1, nc2 = st.columns([10, 1])
+        with nc1:
+            st.markdown(f"""
+            <div class='nc'>
+                <div class='nm'>{note['course_name']} · {note['date']}</div>
+                <div>{note['text']}</div>
+            </div>""", unsafe_allow_html=True)
+        with nc2:
+            if st.button("✕", key=f"dn_{note['id']}"):
+                api_delete(f"/notes/{note['id']}")
+                st.rerun()
 
-        for i, note in enumerate(reversed(filtered)):
-            idx = len(filtered) - 1 - i
-            col_note, col_del = st.columns([10, 1])
-            with col_note:
-                st.markdown(f"""
-                <div class='note-card'>
-                    <div class='note-meta'>{note['Course']} · {note['Date']}</div>
-                    <div>{note['Note']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_del:
-                if st.button("🗑", key=f"del_note_{idx}"):
-                    real_idx = st.session_state.notes.index(note)
-                    st.session_state.notes.pop(real_idx)
-                    st.rerun()
-    else:
-        st.info("No notes yet. Add one above!")
+    if not notes:
+        st.markdown("<div style='color:var(--muted);font-size:.82rem'>No notes yet.</div>",
+                    unsafe_allow_html=True)
