@@ -2,9 +2,8 @@ import streamlit as st
 import plotly.graph_objects as go
 from datetime import date
 import requests
-
-# ── Config ────────────────────────────────────────────────────────────────────
-API = "http://127.0.0.1:8000"
+import os
+API = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
