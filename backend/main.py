@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
-import sqlite3, json, os
+from pydantic import BaseModel, Field
+from typing import Optional, Dict
+from pathlib import Path
+import sqlite3
+import json
 
 app = FastAPI(title="GradeFlow API")
 
@@ -13,14 +15,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = "backend/gradeflow.db"
+# ── DB Path ───────────────────────────────────────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "backend" / "gradeflow.db"
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 # ── DB Init ───────────────────────────────────────────────────────────────────
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
 
 def init_db():
     conn = get_db()
@@ -69,6 +76,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 init_db()
 
 
@@ -77,14 +85,17 @@ class Profile(BaseModel):
     student: str
     year: str
 
+
 class Course(BaseModel):
     name: str
     credits: int = 3
-    components: dict = {}
+    components: Dict = Field(default_factory=dict)
+
 
 class CourseUpdate(BaseModel):
     credits: int
-    components: dict
+    components: Dict = Field(default_factory=dict)
+
 
 class Entry(BaseModel):
     name: str
@@ -93,11 +104,14 @@ class Entry(BaseModel):
     actual: Optional[float] = None
     date: Optional[str] = None
 
+
 class EntryUpdate(BaseModel):
     name: str
     component: str
     max_marks: float
-    actual: Optional[float]
+    actual: Optional[float] = None
+    date: Optional[str] = None
+
 
 class Note(BaseModel):
     course_name: str = "General"
@@ -109,14 +123,18 @@ class Note(BaseModel):
 @app.get("/profile")
 def get_profile():
     conn = get_db()
-    row = conn.execute("SELECT * FROM profile WHERE id=1").fetchone()
+    row = conn.execute("SELECT * FROM profile WHERE id = 1").fetchone()
     conn.close()
     return dict(row)
+
 
 @app.put("/profile")
 def update_profile(p: Profile):
     conn = get_db()
-    conn.execute("UPDATE profile SET student=?, year=? WHERE id=1", (p.student, p.year))
+    conn.execute(
+        "UPDATE profile SET student = ?, year = ? WHERE id = 1",
+        (p.student, p.year)
+    )
     conn.commit()
     conn.close()
     return {"ok": True}
@@ -126,17 +144,19 @@ def update_profile(p: Profile):
 @app.get("/courses")
 def get_courses():
     conn = get_db()
-    rows = conn.execute("SELECT * FROM courses").fetchall()
+    rows = conn.execute("SELECT * FROM courses ORDER BY id").fetchall()
     conn.close()
+
     result = []
     for r in rows:
         result.append({
             "id": r["id"],
             "name": r["name"],
             "credits": r["credits"],
-            "components": json.loads(r["components"]),
+            "components": json.loads(r["components"] or "{}"),
         })
     return result
+
 
 @app.post("/courses")
 def add_course(c: Course):
@@ -148,29 +168,38 @@ def add_course(c: Course):
         )
         conn.commit()
     except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail="Course already exists")
-    finally:
         conn.close()
+        raise HTTPException(status_code=400, detail="Course already exists")
+    conn.close()
     return {"ok": True}
+
 
 @app.put("/courses/{name}")
 def update_course(name: str, c: CourseUpdate):
     conn = get_db()
-    conn.execute(
-        "UPDATE courses SET credits=?, components=? WHERE name=?",
+    cur = conn.execute(
+        "UPDATE courses SET credits = ?, components = ? WHERE name = ?",
         (c.credits, json.dumps(c.components), name)
     )
     conn.commit()
     conn.close()
+
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Course not found")
+
     return {"ok": True}
+
 
 @app.delete("/courses/{name}")
 def delete_course(name: str):
     conn = get_db()
-    conn.execute("DELETE FROM entries WHERE course_name=?", (name,))
-    conn.execute("DELETE FROM courses WHERE name=?", (name,))
+    cur = conn.execute("DELETE FROM courses WHERE name = ?", (name,))
     conn.commit()
     conn.close()
+
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Course not found")
+
     return {"ok": True}
 
 
@@ -179,39 +208,68 @@ def delete_course(name: str):
 def get_entries(course_name: str):
     conn = get_db()
     rows = conn.execute(
-        "SELECT * FROM entries WHERE course_name=? ORDER BY id", (course_name,)
+        "SELECT * FROM entries WHERE course_name = ? ORDER BY id",
+        (course_name,)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
+
 @app.post("/courses/{course_name}/entries")
 def add_entry(course_name: str, e: Entry):
     conn = get_db()
+
+    course = conn.execute(
+        "SELECT name FROM courses WHERE name = ?",
+        (course_name,)
+    ).fetchone()
+
+    if not course:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Course not found")
+
     conn.execute(
-        "INSERT INTO entries (course_name, name, component, max_marks, actual, date) VALUES (?,?,?,?,?,?)",
+        """
+        INSERT INTO entries (course_name, name, component, max_marks, actual, date)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
         (course_name, e.name, e.component, e.max_marks, e.actual, e.date)
     )
     conn.commit()
     conn.close()
     return {"ok": True}
 
+
 @app.put("/entries/{entry_id}")
 def update_entry(entry_id: int, e: EntryUpdate):
     conn = get_db()
-    conn.execute(
-        "UPDATE entries SET name=?, component=?, max_marks=?, actual=? WHERE id=?",
-        (e.name, e.component, e.max_marks, e.actual, entry_id)
+    cur = conn.execute(
+        """
+        UPDATE entries
+        SET name = ?, component = ?, max_marks = ?, actual = ?, date = ?
+        WHERE id = ?
+        """,
+        (e.name, e.component, e.max_marks, e.actual, e.date, entry_id)
     )
     conn.commit()
     conn.close()
+
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
     return {"ok": True}
+
 
 @app.delete("/entries/{entry_id}")
 def delete_entry(entry_id: int):
     conn = get_db()
-    conn.execute("DELETE FROM entries WHERE id=?", (entry_id,))
+    cur = conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
     conn.commit()
     conn.close()
+
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
     return {"ok": True}
 
 
@@ -223,21 +281,33 @@ def get_notes():
     conn.close()
     return [dict(r) for r in rows]
 
+
 @app.post("/notes")
 def add_note(n: Note):
     conn = get_db()
     conn.execute(
-        "INSERT INTO notes (course_name, text, date) VALUES (?,?,?)",
+        "INSERT INTO notes (course_name, text, date) VALUES (?, ?, ?)",
         (n.course_name, n.text, n.date)
     )
     conn.commit()
     conn.close()
     return {"ok": True}
 
+
 @app.delete("/notes/{note_id}")
 def delete_note(note_id: int):
     conn = get_db()
-    conn.execute("DELETE FROM notes WHERE id=?", (note_id,))
+    cur = conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
     conn.commit()
     conn.close()
+
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Note not found")
+
     return {"ok": True}
+
+
+# ── Optional Debug Route ──────────────────────────────────────────────────────
+@app.get("/debug/db-path")
+def debug_db_path():
+    return {"db_path": str(DB_PATH.resolve())}
