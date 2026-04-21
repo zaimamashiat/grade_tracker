@@ -261,20 +261,44 @@ with st.expander("💾 Backup & Restore  ·  CSV Export / Import", expanded=Fals
             "Exports all courses, assessments, and notes into a single CSV file you can store safely."
             "</div>", unsafe_allow_html=True
         )
-        try:
-            resp = requests.get(f"{API}/export/csv", timeout=10)
-            if resp.status_code == 200:
-                st.download_button(
-                    label="⬇ Download gradeflow_backup.csv",
-                    data=resp.content,
-                    file_name="gradeflow_backup.csv",
-                    mime="text/csv",
-                    key="dl_csv",
-                )
-            else:
-                st.error("Could not fetch backup from API.")
-        except Exception as e:
-            st.error(f"API error: {e}")
+        # Build CSV locally from already-loaded data (no extra API call)
+        import csv, io as _io, json as _json
+        _out = _io.StringIO()
+        _w   = csv.writer(_out)
+
+        _w.writerow(["## PROFILE ##"])
+        _w.writerow(["student", "year"])
+        _w.writerow([profile.get("student",""), profile.get("year","")])
+        _w.writerow([])
+
+        _w.writerow(["## COURSES ##"])
+        _w.writerow(["name", "credits", "components_json"])
+        for _c in courses:
+            _w.writerow([_c["name"], _c["credits"], _json.dumps(_c["components"])])
+        _w.writerow([])
+
+        _w.writerow(["## ENTRIES ##"])
+        _w.writerow(["course_name", "name", "component", "max_marks", "actual", "date"])
+        for _c in courses:
+            for _e in _c.get("entries", []):
+                _w.writerow([_c["name"], _e["name"], _e["component"],
+                             _e["max_marks"],
+                             _e["actual"] if _e["actual"] is not None else "",
+                             _e.get("date","") or ""])
+        _w.writerow([])
+
+        _w.writerow(["## NOTES ##"])
+        _w.writerow(["course_name", "text", "date"])
+        for _n in notes:
+            _w.writerow([_n["course_name"], _n["text"], _n.get("date","") or ""])
+
+        st.download_button(
+            label="⬇ Download gradeflow_backup.csv",
+            data=_out.getvalue().encode("utf-8"),
+            file_name="gradeflow_backup.csv",
+            mime="text/csv",
+            key="dl_csv",
+        )
 
     with bcol2:
         st.markdown("<div class='sl' style='margin-top:.2rem;font-size:.95rem'>⬆ Restore from Backup</div>",
