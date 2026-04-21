@@ -65,6 +65,13 @@ section[data-testid="stSidebar"]{display:none;}
 }
 .stButton>button:hover{opacity:.72!important;}
 
+/* Secondary (ghost) button override via class — applied via container trick */
+.btn-secondary > div > button {
+    background:var(--sf2)!important;color:var(--ink)!important;
+    border:1.5px solid var(--border)!important;
+}
+.btn-secondary > div > button:hover{background:var(--border)!important;opacity:1!important;}
+
 details{background:var(--surface);border:1.5px solid var(--border)!important;border-radius:var(--r)!important;margin-bottom:.5rem;}
 details summary{font-weight:600;font-family:'Manrope',sans-serif;color:var(--ink);}
 details summary:hover{color:var(--accent);}
@@ -94,6 +101,21 @@ details>div{background:var(--surface);}
 .div{border:none;border-top:1.5px solid var(--border);margin:1.2rem 0;}
 .wok{color:var(--accent);font-size:.73rem;font-weight:600;}
 .wbad{color:var(--red);font-size:.73rem;font-weight:600;}
+
+/* ── Backup bar ── */
+.backup-bar{
+    display:flex;align-items:center;gap:1rem;
+    background:var(--surface);border:1.5px solid var(--border);
+    border-radius:12px;padding:.6rem 1rem;margin-bottom:1rem;
+}
+.backup-label{
+    font-size:.65rem;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);font-weight:600;white-space:nowrap;
+}
+/* file uploader tweaks */
+[data-testid="stFileUploader"]{background:transparent!important;}
+[data-testid="stFileUploader"] section{background:var(--sf2)!important;border:1.5px dashed var(--border)!important;border-radius:10px!important;}
+[data-testid="stFileUploader"] label{color:var(--muted)!important;font-size:.8rem!important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -221,6 +243,74 @@ with m2: st.metric("Courses", len(courses))
 with m3: st.metric("Graded", sum(1 for r in rows if r["score"] is not None))
 with m4: st.metric("Assessments", sum(len(c["entries"]) for c in courses))
 with m5: st.metric("Notes", len(notes))
+
+st.markdown("<hr class='div'>", unsafe_allow_html=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  BACKUP BAR — CSV Export / Import
+# ════════════════════════════════════════════════════════════════════════════
+with st.expander("💾 Backup & Restore  ·  CSV Export / Import", expanded=False):
+    bcol1, bcol2 = st.columns([1, 1], gap="large")
+
+    with bcol1:
+        st.markdown("<div class='sl' style='margin-top:.2rem;font-size:.95rem'>⬇ Download Backup</div>",
+                    unsafe_allow_html=True)
+        st.markdown(
+            "<div style='color:var(--muted);font-size:.8rem;margin-bottom:.6rem'>"
+            "Exports all courses, assessments, and notes into a single CSV file you can store safely."
+            "</div>", unsafe_allow_html=True
+        )
+        try:
+            resp = requests.get(f"{API}/export/csv", timeout=10)
+            if resp.status_code == 200:
+                st.download_button(
+                    label="⬇ Download gradeflow_backup.csv",
+                    data=resp.content,
+                    file_name="gradeflow_backup.csv",
+                    mime="text/csv",
+                    key="dl_csv",
+                )
+            else:
+                st.error("Could not fetch backup from API.")
+        except Exception as e:
+            st.error(f"API error: {e}")
+
+    with bcol2:
+        st.markdown("<div class='sl' style='margin-top:.2rem;font-size:.95rem'>⬆ Restore from Backup</div>",
+                    unsafe_allow_html=True)
+        st.markdown(
+            "<div style='color:var(--muted);font-size:.8rem;margin-bottom:.6rem'>"
+            "Upload a previously downloaded CSV. Existing data is kept; duplicate entries are skipped."
+            "</div>", unsafe_allow_html=True
+        )
+        uploaded = st.file_uploader(
+            "Upload CSV backup",
+            type=["csv"],
+            key="upload_csv",
+            label_visibility="collapsed",
+        )
+        if uploaded is not None:
+            if st.button("⬆ Import Data", key="btn_import"):
+                try:
+                    files = {"file": (uploaded.name, uploaded.getvalue(), "text/csv")}
+                    resp2 = requests.post(f"{API}/import/csv", files=files, timeout=15)
+                    if resp2.status_code == 200:
+                        result = resp2.json()
+                        imp = result.get("imported", {})
+                        st.success(
+                            f"✅ Import complete — "
+                            f"{imp.get('courses', 0)} courses, "
+                            f"{imp.get('entries', 0)} assessments, "
+                            f"{imp.get('notes', 0)} notes imported."
+                            + (f" ({imp.get('skipped_courses', 0)} duplicate courses skipped)" if imp.get("skipped_courses") else "")
+                        )
+                        st.rerun()
+                    else:
+                        st.error(f"Import failed: {resp2.text}")
+                except Exception as e:
+                    st.error(f"API error: {e}")
+
 
 st.markdown("<hr class='div'>", unsafe_allow_html=True)
 
